@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DJIKOR 71 – Salle R32</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; overflow: hidden; font-family: 'Arial Black', sans-serif; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #ui {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 8px; align-items: center; z-index: 100;
+  }
+  .btn {
+    background: rgba(255,196,0,0.15); border: 2px solid #FFC400;
+    color: #FFC400; width: 50px; height: 50px; border-radius: 6px;
+    font-size: 20px; cursor: pointer; display: flex; align-items: center;
+    justify-content: center; user-select: none; transition: background 0.15s;
+  }
+  .btn:hover { background: rgba(255,196,0,0.35); }
+  .btn:active { background: rgba(255,196,0,0.55); }
+  #info {
+    position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+    color: #FFC400; font-size: 13px; letter-spacing: 2px; opacity: 0.7;
+    text-transform: uppercase;
+  }
+  #crosshair {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    width: 16px; height: 16px; pointer-events: none;
+  }
+  #crosshair::before, #crosshair::after {
+    content:''; position: absolute; background: rgba(255,196,0,0.6);
+  }
+  #crosshair::before { width:2px; height:100%; left:50%; transform:translateX(-50%); }
+  #crosshair::after  { height:2px; width:100%; top:50%; transform:translateY(-50%); }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="crosshair"></div>
+<div id="info">DJIKOR 71 — Salle R32 &nbsp;|&nbsp; ZQSD / Flèches + Souris</div>
+<div id="ui">
+  <div class="btn" id="btnL">◀</div>
+  <div class="btn" id="btnB">▼</div>
+  <div class="btn" id="btnF">▲</div>
+  <div class="btn" id="btnR">▶</div>
+</div>
+
+<script>
+// ─── Three.js via CDN ─────────────────────────────────────────────────────────
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ─── Scene setup ─────────────────────────────────────────────────────────────
+const W = window.innerWidth, H = window.innerHeight;
+const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('c'), antialias: true });
+renderer.setSize(W, H);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputEncoding = THREE.sRGBEncoding;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1a1a);
+scene.fog = new THREE.Fog(0x1a1a1a, 18, 35);
+
+const camera = new THREE.PerspectiveCamera(72, W / H, 0.05, 60);
+camera.position.set(0, 1.65, 7.5);
+
+window.addEventListener('resize', () => {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+});
+
+// ─── Materials ────────────────────────────────────────────────────────────────
+const YELLOW  = 0xFFC400;
+const DARK    = 0x1c1c1c;
+const DARKER  = 0x141414;
+const WALL_C  = 0x222222;
+const WOOD_C  = 0xc89A52;
+const FLOOR_C = 0x2a2a2a;
+
+const mWall   = new THREE.MeshStandardMaterial({ color: WALL_C,  roughness: 0.9, metalness: 0 });
+const mFloor  = new THREE.MeshStandardMaterial({ color: FLOOR_C, roughness: 0.8, metalness: 0 });
+const mYellow = new THREE.MeshStandardMaterial({ color: YELLOW,  roughness: 0.5, metalness: 0.1 });
+const mWood   = new THREE.MeshStandardMaterial({ color: WOOD_C,  roughness: 0.7, metalness: 0 });
+const mBlack  = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.6, metalness: 0.2 });
+const mWhite  = new THREE.MeshStandardMaterial({ color: 0xf0f0f0, roughness: 0.8, metalness: 0 });
+const mBoard  = new THREE.MeshStandardMaterial({ color: 0xe8e8e8, roughness: 0.95, metalness: 0 });
+const mCeil   = new THREE.MeshStandardMaterial({ color: 0x282828, roughness: 0.9, metalness: 0 });
+const mGrey   = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.7, metalness: 0.3 });
+const mDoor   = new THREE.MeshStandardMaterial({ color: 0x2d2d2d, roughness: 0.7, metalness: 0.2 });
+
+// ─── Room dimensions ─────────────────────────────────────────────────────────
+const RW = 12, RH = 3.2, RD = 11; // width, height, depth
+
+function box(w,h,d,mat,x,y,z,rx=0,ry=0,rz=0){
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), mat);
+  m.position.set(x,y,z);
+  m.rotation.set(rx,ry,rz);
+  m.castShadow = true; m.receiveShadow = true;
+  scene.add(m); return m;
+}
+
+// ─── Floor ────────────────────────────────────────────────────────────────────
+box(RW, 0.1, RD, mFloor, 0, -0.05, 0);
+
+// ─── Ceiling ─────────────────────────────────────────────────────────────────
+box(RW, 0.1, RD, mCeil, 0, RH, 0);
+
+// ─── Back wall (whiteboard side) ──────────────────────────────────────────────
+box(RW, RH, 0.15, mWall, 0, RH/2, -RD/2);
+
+// ─── Front wall (entrance) ───────────────────────────────────────────────────
+box(RW, RH, 0.15, mWall, 0, RH/2, RD/2);
+
+// ─── Left wall ───────────────────────────────────────────────────────────────
+box(0.15, RH, RD, mWall, -RW/2, RH/2, 0);
+
+// ─── Right wall ──────────────────────────────────────────────────────────────
+box(0.15, RH, RD, mWall, RW/2, RH/2, 0);
+
+// ─── Yellow stripe – left wall ───────────────────────────────────────────────
+box(0.12, 0.22, RD, mYellow, -RW/2+0.08, 0.9, 0);
+
+// ─── Yellow stripe – right wall ──────────────────────────────────────────────
+box(0.12, 0.22, RD, mYellow, RW/2-0.08, 0.9, 0);
+
+// ─── Yellow stripe – back wall ───────────────────────────────────────────────
+box(RW, 0.22, 0.12, mYellow, 0, 0.9, -RD/2+0.08);
+
+// ─── Yellow floor stripes (two parallel lines down the aisle) ────────────────
+box(0.12, 0.02, RD-0.5, mYellow, -0.5, 0.06, 0);
+box(0.12, 0.02, RD-0.5, mYellow,  0.5, 0.06, 0);
+
+// ─── Whiteboard ──────────────────────────────────────────────────────────────
+box(4.5, 1.4, 0.06, mBoard, 0, 1.9, -RD/2+0.12);
+
+// ─── Ceiling acoustic panels ─────────────────────────────────────────────────
+const panW = 1.6, panD = 1.6;
+const ceilMat = new THREE.MeshStandardMaterial({ color: 0x353535, roughness: 0.95 });
+const panPos = [
+  [-2.5,2.6], [0,2.6], [2.5,2.6],
+  [-2.5,0],   [0,0],   [2.5,0],
+  [-2.5,-2.6],[0,-2.6],[2.5,-2.6],
+];
+panPos.forEach(([x,z]) => box(panW, 0.06, panD, ceilMat, x, RH-0.05, z));
+
+// ─── Ceiling LED panels ───────────────────────────────────────────────────────
+const ledMat = new THREE.MeshStandardMaterial({ color: 0xfff8e0, emissive: 0xfff8e0, emissiveIntensity: 1.2 });
+[[-2.5,-2.2],[2.5,-2.2],[-2.5,2.2],[2.5,2.2]].forEach(([x,z]) => {
+  box(1.3, 0.04, 0.45, ledMat, x, RH-0.04, z);
+});
+
+// ─── HVAC duct ───────────────────────────────────────────────────────────────
+box(0.45, 0.35, RD*0.55, mGrey, -RW/2+0.45, RH-0.3, -1.2);
+
+// ─── AC unit left wall ────────────────────────────────────────────────────────
+box(0.12, 0.25, 0.7, new THREE.MeshStandardMaterial({color:0x888888,roughness:0.4,metalness:0.5}),
+   -RW/2+0.1, RH-0.4, -3.2);
+
+// ─── Door – in the right wall, clearly visible ───────────────────────────────
+const DX = RW/2 - 0.01;
+const DZ = 3.5;
+// Dark recess behind door
+box(0.18, 2.2, 1.05, new THREE.MeshStandardMaterial({color:0x080808}), DX, 1.1, DZ);
+// Door panel
+box(0.09, 2.1, 0.98, mDoor, DX-0.05, 1.1, DZ);
+// Frame left jamb
+box(0.2, 2.35, 0.14, mBlack, DX, 1.175, DZ-0.56);
+// Frame right jamb
+box(0.2, 2.35, 0.14, mBlack, DX, 1.175, DZ+0.56);
+// Frame top
+box(0.2, 0.18, 1.26, mBlack, DX, 2.28, DZ);
+// Handle
+box(0.1, 0.06, 0.06, mGrey, DX-0.1, 1.05, DZ-0.25);
+
+// ─── Text canvas helper ───────────────────────────────────────────────────────
+function makeTextTexture(lines, opts = {}) {
+  const {
+    w=512, h=256, bg='transparent', color='#FFC400',
+    font='900 italic 130px "Arial Black", Arial',
+    align='center', vAlign='middle'
+  } = opts;
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  const ctx = cv.getContext('2d');
+  if (bg !== 'transparent') { ctx.fillStyle = bg; ctx.fillRect(0,0,w,h); }
+  ctx.fillStyle = color;
+  ctx.font = font;
+  ctx.textAlign = align;
+  ctx.textBaseline = vAlign;
+  const lh = h / lines.length;
+  lines.forEach((ln, i) => ctx.fillText(ln, w/2, lh*(i+0.5)));
+  const tex = new THREE.CanvasTexture(cv);
+  return tex;
+}
+
+function textPlane(lines, w3, h3, opts, x, y, z, ry=0) {
+  const tex = makeTextTexture(lines, opts);
+  const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false });
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w3, h3), mat);
+  m.position.set(x, y, z);
+  m.rotation.y = ry;
+  scene.add(m);
+  return m;
+}
+
+// ─── DJIKOR 71 on left wall only (NOT near whiteboard) ───────────────────────
+textPlane(['DJIKOR 71'], 5.5, 1.4,
+  { w:1024, h:256, font:'900 italic 160px "Arial Black", Arial', color:'#FFC400' },
+  -2.2, 2.1, -RD/2+0.18);
+
+// ─── DJIKOR 71 on floor (along aisle) ────────────────────────────────────────
+{
+  const tex = makeTextTexture(['DJIKOR 71'], { w:1024,h:256, font:'900 italic 200px "Arial Black",Arial', color:'#FFC400' });
+  const mat = new THREE.MeshBasicMaterial({map:tex,transparent:true,depthWrite:false});
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(5.5,0.85), mat);
+  m.rotation.x = -Math.PI/2;
+  m.rotation.z = Math.PI/2;
+  m.position.set(0, 0.08, 1.5);
+  scene.add(m);
+}
+// 71 on floor near front
+{
+  const tex = makeTextTexture(['71'], { w:512,h:256, font:'900 italic 230px "Arial Black",Arial', color:'#FFC400' });
+  const mat = new THREE.MeshBasicMaterial({map:tex,transparent:true,depthWrite:false});
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(2.2,1.0), mat);
+  m.rotation.x = -Math.PI/2;
+  m.position.set(0, 0.08, 4.5);
+  scene.add(m);
+}
+
+// ─── R32 on right wall next to door ──────────────────────────────────────────
+{
+  const tex = makeTextTexture(['R32'], { w:256, h:200, font:'900 150px "Arial Black",Arial', color:'#FFC400' });
+  const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false });
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(0.85, 0.65), mat);
+  m.position.set(RW/2 - 0.08, 2.0, 2.55);
+  m.rotation.y = -Math.PI / 2;
+  scene.add(m);
+}
+
+// ─── Electrical panel ────────────────────────────────────────────────────────
+box(0.06, 0.55, 0.38, new THREE.MeshStandardMaterial({color:0x777777,roughness:0.4,metalness:0.6}),
+   -RW/2+0.15+0.14, 1.45, -RD/2+0.65);
+
+// ─── Desks & Chairs ───────────────────────────────────────────────────────────
+// Layout: 3 columns × 4 rows on each side of the aisle, plus a row near whiteboard
+// Left side columns: x ≈ -3.0, -1.8  Right side: x ≈ 1.8, 3.0
+// Rows z: -3.8, -2.2, -0.6, 1.0, 2.5
+
+const deskRows = [-3.8, -2.2, -0.6, 1.0, 2.6];
+const leftCols  = [-3.4, -2.0];
+const rightCols = [ 2.0,  3.4];
+
+function desk(x, z) {
+  // Table top
+  box(1.1, 0.06, 0.65, mWood, x, 0.76, z);
+  // Table legs
+  [[-0.45,-0.28],[0.45,-0.28],[-0.45,0.28],[0.45,0.28]].forEach(([lx,lz]) => {
+    box(0.05, 0.76, 0.05, mBlack, x+lx, 0.38, z+lz);
+  });
+}
+
+function chair(x, z, facingFront=true) {
+  const offset = facingFront ? 0.45 : -0.45;
+  // Seat
+  box(0.42, 0.04, 0.42, mWood, x, 0.47, z+offset);
+  // Backrest
+  box(0.42, 0.38, 0.04, mWood, x, 0.72, z+offset+(facingFront?0.18:-0.18));
+  // Legs
+  [[-0.17,-0.17],[0.17,-0.17],[-0.17,0.17],[0.17,0.17]].forEach(([lx,lz])=>{
+    box(0.04, 0.47, 0.04, mBlack, x+lx, 0.235, z+offset+lz);
+  });
+}
+
+deskRows.forEach(z => {
+  leftCols.forEach(x  => { desk(x,z); chair(x,z,false); });
+  rightCols.forEach(x => { desk(x,z); chair(x,z,false); });
+});
+
+// ─── People (stylized low-poly figures sitting at each desk) ─────────────────
+// Skin tones variety
+const skinTones = [0xf5c5a3, 0xd4956a, 0x8d5524, 0xf0d5b0, 0xc68642, 0x7b4226];
+const shirtColors = [0x3a6bc9, 0xc93a3a, 0x3ac97b, 0x9b3ac9, 0xc9a03a, 0x3ac9c9, 0xffffff, 0x222222];
+const hairColors = [0x1a1a1a, 0x4a3728, 0xd4aa70, 0xff8c00, 0x8b0000, 0x2c1810];
+
+let personIdx = 0;
+function person(x, z) {
+  const si = personIdx % skinTones.length;
+  const ci = personIdx % shirtColors.length;
+  const hi = personIdx % hairColors.length;
+  personIdx++;
+
+  const skinMat  = new THREE.MeshStandardMaterial({ color: skinTones[si], roughness: 0.8 });
+  const shirtMat = new THREE.MeshStandardMaterial({ color: shirtColors[ci], roughness: 0.85 });
+  const hairMat  = new THREE.MeshStandardMaterial({ color: hairColors[hi], roughness: 0.9 });
+  const pantsMat = new THREE.MeshStandardMaterial({ color: 0x2a2a3a, roughness: 0.85 });
+
+  const seatZ = z - 0.45; // chair is behind desk
+  const g = new THREE.Group();
+  scene.add(g);
+  g.position.set(x, 0, seatZ);
+
+  // Torso
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.38, 0.2), shirtMat);
+  torso.position.set(0, 0.86, 0);
+  torso.castShadow = true;
+  g.add(torso);
+
+  // Head
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.22, 0.2), skinMat);
+  head.position.set(0, 1.14, 0);
+  head.castShadow = true;
+  g.add(head);
+
+  // Hair cap
+  const hair = new THREE.Mesh(new THREE.BoxGeometry(0.21, 0.1, 0.21), hairMat);
+  hair.position.set(0, 1.23, 0);
+  g.add(hair);
+
+  // Upper arms (slightly angled forward – resting on desk)
+  [-0.16, 0.16].forEach(ax => {
+    const uarm = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.1, 0.24), shirtMat);
+    uarm.position.set(ax, 0.76, 0.12);
+    uarm.rotation.x = -0.35;
+    uarm.castShadow = true;
+    g.add(uarm);
+
+    // Forearm on desk
+    const farm = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.07, 0.3), skinMat);
+    farm.position.set(ax, 0.78, 0.37);
+    farm.castShadow = true;
+    g.add(farm);
+  });
+
+  // Thighs (sitting)
+  [-0.08, 0.08].forEach(lx => {
+    const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.32), pantsMat);
+    thigh.position.set(lx, 0.52, 0.08);
+    thigh.castShadow = true;
+    g.add(thigh);
+
+    // Lower leg (hanging)
+    const shin = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.28, 0.08), pantsMat);
+    shin.position.set(lx, 0.36, 0.23);
+    shin.castShadow = true;
+    g.add(shin);
+  });
+
+  // Slight head tilt toward desk
+  head.rotation.x = 0.25;
+
+  return g;
+}
+
+deskRows.forEach(z => {
+  leftCols.forEach(x  => person(x, z));
+  rightCols.forEach(x => person(x, z));
+});
+
+// ─── Lights ───────────────────────────────────────────────────────────────────
+const ambient = new THREE.AmbientLight(0x555555, 1.2);
+scene.add(ambient);
+
+const ceilLightPositions = [[-2.5,-2.2],[2.5,-2.2],[-2.5,2.2],[2.5,2.2]];
+ceilLightPositions.forEach(([x,z])=>{
+  const pl = new THREE.PointLight(0xfff5cc, 1.8, 9);
+  pl.position.set(x, RH-0.15, z);
+  pl.castShadow = true;
+  pl.shadow.mapSize.set(512,512);
+  scene.add(pl);
+});
+
+// Whiteboard spot light
+const spot = new THREE.SpotLight(0xffffff, 1.5, 8, Math.PI/5, 0.5);
+spot.position.set(0, RH-0.1, -RD/2+3);
+spot.target.position.set(0, 1.5, -RD/2+0.2);
+scene.add(spot); scene.add(spot.target);
+
+// ─── Camera controls (WASD / Arrows + Mouse look) ────────────────────────────
+const keys = {};
+document.addEventListener('keydown', e => { keys[e.code] = true; });
+document.addEventListener('keyup',   e => { keys[e.code] = false; });
+
+let yaw = Math.PI, pitch = 0;
+let isPointerLocked = false;
+
+document.getElementById('c').addEventListener('click', () => {
+  document.getElementById('c').requestPointerLock();
+});
+document.addEventListener('pointerlockchange', () => {
+  isPointerLocked = document.pointerLockElement === document.getElementById('c');
+});
+document.addEventListener('mousemove', e => {
+  if (!isPointerLocked) return;
+  yaw   -= e.movementX * 0.0022;
+  pitch -= e.movementY * 0.0022;
+  pitch = Math.max(-1.1, Math.min(1.1, pitch));
+});
+
+// Mobile touch look
+let lastTouch = null;
+document.getElementById('c').addEventListener('touchstart', e => {
+  if (e.touches.length===1) lastTouch = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+});
+document.getElementById('c').addEventListener('touchmove', e => {
+  if (e.touches.length===1 && lastTouch) {
+    const dx = e.touches[0].clientX - lastTouch.x;
+    const dy = e.touches[0].clientY - lastTouch.y;
+    yaw   -= dx * 0.004;
+    pitch -= dy * 0.004;
+    pitch = Math.max(-1.1, Math.min(1.1, pitch));
+    lastTouch = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }
+}, { passive: true });
+
+// Button controls
+const btnState = { f:false, b:false, l:false, r:false };
+['f','b','l','r'].forEach(dir => {
+  const el = document.getElementById('btn'+dir.toUpperCase());
+  const startEvt = ['mousedown','touchstart'];
+  const endEvt   = ['mouseup','touchend','mouseleave'];
+  startEvt.forEach(ev => el.addEventListener(ev, () => btnState[dir]=true));
+  endEvt.forEach(ev   => el.addEventListener(ev, () => btnState[dir]=false));
+});
+
+const dir3 = new THREE.Vector3();
+const right3 = new THREE.Vector3();
+const SPEED = 0.045;
+
+// Boundaries
+const BOUND = { minX:-RW/2+0.5, maxX:RW/2-0.5, minZ:-RD/2+0.5, maxZ:RD/2-0.5, minY:1.4, maxY:2.6 };
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  // Direction from yaw/pitch
+  dir3.set(
+    Math.sin(yaw)*Math.cos(pitch),
+    Math.sin(pitch),
+    Math.cos(yaw)*Math.cos(pitch)
+  );
+  right3.set(Math.cos(yaw), 0, -Math.sin(yaw));
+
+  const moveF = keys['KeyW']||keys['ArrowUp']   || btnState.f;
+  const moveB = keys['KeyS']||keys['ArrowDown']  || btnState.b;
+  const moveL = keys['KeyA']||keys['ArrowLeft']  || btnState.l;
+  const moveR = keys['KeyD']||keys['ArrowRight'] || btnState.r;
+
+  const flat = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw)).normalize();
+  const rightFlat = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw)).normalize();
+
+  if (moveF) camera.position.addScaledVector(flat, SPEED);
+  if (moveB) camera.position.addScaledVector(flat, -SPEED);
+  if (moveL) camera.position.addScaledVector(rightFlat, -SPEED);
+  if (moveR) camera.position.addScaledVector(rightFlat, SPEED);
+
+  camera.position.x = Math.max(BOUND.minX, Math.min(BOUND.maxX, camera.position.x));
+  camera.position.z = Math.max(BOUND.minZ, Math.min(BOUND.maxZ, camera.position.z));
+  camera.position.y = 1.65;
+
+  camera.lookAt(
+    camera.position.x + dir3.x,
+    camera.position.y + dir3.y,
+    camera.position.z + dir3.z
+  );
+
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>
